@@ -1,0 +1,16 @@
+openssl_conf = openssl_init
+
+[ openssl_init ]
+engines = engine_section
+
+[ engine_section ]
+pkcs11 = pkcs11_section
+
+[ pkcs11_section ]
+PIN = userpin
+
+[ req ]
+distinguished_name = req_distinguished_name
+
+[ req_distinguished_name ]
+
