@@ -1,3 +1,9 @@
+'''
+Thin wrappers over OpenSSL ENGINE operations based on pyca/cryptography.
+We try to make key objects behave like cryptography keys.
+Provide low-level ENGINE functions that use the cffi directly.
+'''
+
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric.ec import (
     ECDSA, )
@@ -50,10 +56,14 @@ def _hash_data(hsh, data):
 
 
 class _EngineRSAPublicKey1(_RSAPublicKey):
+    '''wrapper for cryptography _RSAPublicKey class'''
     pass
 
 
 class _EngineRSAPrivateKey1(_RSAPrivateKey):
+    '''wrapper for cryptography _RSAPrivateKey class
+    we don't support serialization, unlike "soft" keys
+    '''
     def private_numbers(self):
         raise ValueError('Not implemented for engine private keys')
 
@@ -62,10 +72,14 @@ class _EngineRSAPrivateKey1(_RSAPrivateKey):
 
 
 class _EngineECPublicKey1(_EllipticCurvePublicKey):
+    '''wrapper for cryptography _EllipticCurvePublicKey class'''
     pass
 
 
 class _EngineECPrivateKey1(_EllipticCurvePrivateKey):
+    '''wrapper for cryptography _EllipticCurvePrivateKey class
+    we don't support serialization, unlike "soft" keys
+    '''
     def private_numbers(self):
         raise ValueError('Not implemented for engine private keys')
 
@@ -74,6 +88,20 @@ class _EngineECPrivateKey1(_EllipticCurvePrivateKey):
 
 
 def engine_init(engine, commands):
+    """
+    Create an engine object
+
+    :param engine:
+        str OpenSSL engine name
+
+    :param commands:
+        list of (str, str)-tuples representing OpenSSL's
+        ENGINE_ctrl_cmd_string(cmd_name, arg) calls
+        e.g., [('PIN', "super_secret_token-PIN")]
+
+    :return:
+        an ENGINE reference (cffi cdata type)
+    """
 
     _lib.ENGINE_load_builtin_engines()
 
@@ -96,27 +124,91 @@ def engine_init(engine, commands):
 
 
 def engine_padding_pkcs1():
+    '''
+    Utility function for cryptography padding instance
+
+    :return:
+        PKCS1v15() instance
+    '''
     return PKCS1v15()
 
 
 def engine_padding_oaep(hsh1, hsh2, label=None):
+    '''
+    Utility function for cryptography padding instance
+
+    :param hsh1:
+        str the hash name for MGF1_MD
+        'sha1' 'sha256' etc
+        OpenSSL EVP_PKEY_CTX_set_rsa_mgf1_md()
+
+    :param hsh2:
+        str the hash name for OAEP_MD
+        'sha1' 'sha256' etc
+        OpenSSL EVP_PKEY_CTX_set_rsa_oaep_md()
+
+    :return:
+        OAEP instance
+    '''
     return OAEP(MGF1(engine_hashes(hsh1)), engine_hashes(hsh2), label)
 
 
 def engine_padding_pss(hsh, saltlen):
+    '''
+    Utility function for cryptography padding instance
+
+    :param hsh:
+        str the hash name
+        'sha1' 'sha256' etc
+        OpenSSL EVP_PKEY_CTX_set_rsa_padding()
+
+    :param saltlen:
+        int the PSS salt length
+        usually the hash length, e.g. 32 for sha256
+        cannot use OpenSSL special -1, -2 values here
+        OpenSSL EVP_PKEY_CTX_set_rsa_pss_saltlen()
+
+    :return:
+        PSS instance
+    '''
     return PSS(MGF1(engine_hashes(hsh)), saltlen)
 
 
 def engine_hashes(hsh):
+    '''
+    Utility function for cryptography HashAlgorithm
+
+    :param hsh:
+        str the hash name
+        'sha1' 'sha256', 'sha384' 'sha512'
+
+    :return:
+        HashAlgorithm instance
+    '''
     return getattr(hashes, hsh.upper())()
 
 
 def ecdsa_with_hash(k):
+    '''
+    Utility function for cryptography EllipticCurveSignatureAlgorithm instance
+
+    :param k:
+        str hash name
+
+    :return:
+        ECDSA instance
+    '''
     return ECDSA(engine_hashes(k))
 
 
 def engine_finish(engine):
+    '''
+    Clean up OpenSSL ENGINE
 
+    :param engine:
+        ENGINE reference
+
+    '''
     r = _lib.ENGINE_finish(engine)
     assert r == 1
     # r = _lib.ENGINE_free(engine)
@@ -124,6 +216,20 @@ def engine_finish(engine):
 
 
 def engine_load_private_key(e, alias):
+    '''
+    Load a private key from an  OpenSSL ENGINE.
+
+    :param e:
+        ENGINE reference
+
+    :param alias:
+        str name of key
+
+    :return:
+        a cryptography *PrivateKey-like instance
+        it should implement RSAPrivateKey/EllipticCurvePrivateKey
+        this object does not support serialization
+    '''
 
     key = _lib.ENGINE_load_private_key(e, alias.encode('ascii'),
                                                _ffi.NULL, _ffi.NULL)
@@ -144,6 +250,19 @@ def engine_load_private_key(e, alias):
 
 
 def engine_load_public_key(e, alias):
+    '''
+    Load a public key from an  OpenSSL ENGINE.
+
+    :param e:
+        ENGINE reference
+
+    :param alias:
+        str name of key
+
+    :return:
+        a cryptography *PublicKey-like instance
+        it should implement RSAPublicKey/EllipticCurvePublicKey
+    '''
 
     key = _lib.ENGINE_load_public_key(e, alias.encode('ascii'),
                                              _ffi.NULL, _ffi.NULL)
@@ -164,6 +283,28 @@ def engine_load_public_key(e, alias):
 
 
 def engine_sign(pkey, data, hash='sha256', padding=None):
+    '''
+    Low-level ENGINE signing function
+
+    :param pkey:
+        EVP_PKEY signing private key; it is the _evp_pkey attribute
+        of a cryptography key object
+
+    :param data:
+        bytes data to be signed
+
+    :param hash:
+        str name of hash, if data is prehashed then prepend with 'pre:'
+        e.g. 'sha256' or 'pre:sha256'
+
+    :param padding:
+        tuple consisting of padding enum and options
+        (1,) for PKCS1v15
+        (6, salt_length) for PSS
+
+    :return:
+        bytes the signature value
+    '''
 
     if hash.startswith('pre:'):
         hash = hash[4:]
@@ -206,6 +347,31 @@ def engine_sign(pkey, data, hash='sha256', padding=None):
 
 
 def engine_verify(pkey, signature, data, hash='sha256', padding=None):
+    '''
+    Low-level ENGINE verification function
+
+    :param pkey:
+        EVP_PKEY verifiying public key; it is the _evp_pkey attribute
+        of a cryptography key object
+
+    :param signature:
+        bytes signature
+
+    :param data:
+        bytes data to be verified
+
+    :param hash:
+        str name of hash, if data is prehashed then prepend with 'pre:'
+        e.g. 'sha256' or 'pre:sha256'
+
+    :param padding:
+        tuple consisting of padding enum and options
+        (1,) for PKCS1v15
+        (6, salt_length) for PSS
+
+    :return:
+        True if verification is successful
+    '''
 
     if hash.startswith('pre:'):
         hash = hash[4:]
@@ -244,6 +410,24 @@ def engine_verify(pkey, signature, data, hash='sha256', padding=None):
 
 
 def engine_encrypt(pkey, plaintext, padding=None):
+    '''
+    Low-level ENGINE encryption function
+
+    :param pkey:
+        EVP_PKEY encryption public key; it is the _evp_pkey attribute
+        of a cryptography key object
+
+    :param plaintext:
+        bytes data to be encrypted
+
+    :param padding:
+        tuple consisting of padding enum and options
+        (1,) for PKCS1v15
+        (4, mgf1_md_name:str, oaep_md_name:str) for OAEP
+
+    :return:
+        bytes ciphertext
+    '''
     ctx = _get_ctx(pkey)
 
     r = _lib.EVP_PKEY_encrypt_init(ctx)
@@ -281,6 +465,25 @@ def engine_encrypt(pkey, plaintext, padding=None):
 
 
 def engine_decrypt(pkey, ciphertext, padding=None):
+    '''
+    Low-level ENGINE decryption function
+
+    :param pkey:
+        EVP_PKEY decryption private key; it is the _evp_pkey attribute
+        of a cryptography key object
+
+    :param ciphertext:
+        bytes data to be decrypted
+
+    :param padding:
+        tuple consisting of padding enum and options
+        (1,) for PKCS1v15
+        (4, mgf1_md_name:str, oaep_md_name:str) for OAEP
+        e.g., (4, 'sha256', 'sha256')
+
+    :return:
+        bytes plaintext
+    '''
     ctx = _get_ctx(pkey)
 
     r = _lib.EVP_PKEY_decrypt_init(ctx)
