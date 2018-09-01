@@ -34,13 +34,8 @@ _backend = default_backend()
 
 _lib, _ffi = _backend._lib, _backend._ffi
 
-_hashes = {
-    'sha1': _lib.EVP_sha1,
-    'sha256': _lib.EVP_sha256,
-    'sha384': _lib.EVP_sha384,
-    'sha512': _lib.EVP_sha512
-}
-
+def _lib_hash(hsh):
+    return getattr(_lib, 'EVP_' + hsh.lower())()
 
 def _get_ctx(pkey):
     pkey_ctx = _lib.EVP_PKEY_CTX_new(pkey, _ffi.NULL)
@@ -188,7 +183,7 @@ def engine_hashes(hsh):
     return getattr(hashes, hsh.upper())()
 
 
-def ecdsa_with_hash(k):
+def ecdsa_with_hash(hsh):
     '''
     Utility function for cryptography EllipticCurveSignatureAlgorithm instance
 
@@ -198,7 +193,7 @@ def ecdsa_with_hash(k):
     :return:
         ECDSA instance
     '''
-    return ECDSA(engine_hashes(k))
+    return ECDSA(engine_hashes(hsh))
 
 
 def engine_finish(engine):
@@ -293,7 +288,7 @@ openssl dgst -sha256 -engine pkcs11 -keyform engine
     -sigopt rsa_pss_saltlen:32 \
     -out signature_file data_file
 '''
-def engine_sign(pkey, data, hash='sha256', padding=None):
+def engine_sign(pkey, data, algorithm='sha256', padding=None):
     '''
     Low-level ENGINE signing function
 
@@ -304,7 +299,7 @@ def engine_sign(pkey, data, hash='sha256', padding=None):
     :param data:
         bytes data to be signed
 
-    :param hash:
+    :param algorithm:
         str name of hash, if data is prehashed then prepend with 'pre:'
         e.g. 'sha256' or 'pre:sha256'
 
@@ -317,17 +312,17 @@ def engine_sign(pkey, data, hash='sha256', padding=None):
         bytes the signature value
     '''
 
-    if hash.startswith('pre:'):
-        hash = hash[4:]
+    if algorithm.startswith('pre:'):
+        algorithm = algorithm[4:]
     else:
-        data = _hash_data(hash, data)
+        data = _hash_data(algorithm, data)
 
     ctx = _get_ctx(pkey)
 
     r = _lib.EVP_PKEY_sign_init(ctx)
     assert r == 1
 
-    r = _lib.EVP_PKEY_CTX_set_signature_md(ctx, _hashes[hash.lower()]())
+    r = _lib.EVP_PKEY_CTX_set_signature_md(ctx, _lib_hash(algorithm))
     assert r == 1
 
     label = 'ANON'
@@ -369,7 +364,7 @@ openssl dgst -sha256 -engine pkcs11 -keyform engine
     -sigopt rsa_pss_saltlen:32 \
     -signature signature_file data_file
 '''
-def engine_verify(pkey, signature, data, hash='sha256', padding=None):
+def engine_verify(pkey, signature, data, algorithm='sha256', padding=None):
     '''
     Low-level ENGINE verification function
 
@@ -383,7 +378,7 @@ def engine_verify(pkey, signature, data, hash='sha256', padding=None):
     :param data:
         bytes data to be verified
 
-    :param hash:
+    :param algorithm:
         str name of hash, if data is prehashed then prepend with 'pre:'
         e.g. 'sha256' or 'pre:sha256'
 
@@ -396,17 +391,17 @@ def engine_verify(pkey, signature, data, hash='sha256', padding=None):
         True if verification is successful
     '''
 
-    if hash.startswith('pre:'):
-        hash = hash[4:]
+    if algorithm.startswith('pre:'):
+        algorithm = algorithm[4:]
     else:
-        data = _hash_data(hash, data)
+        data = _hash_data(algorithm, data)
 
     ctx = _get_ctx(pkey)
 
     r = _lib.EVP_PKEY_verify_init(ctx)
     assert r == 1
 
-    r = _lib.EVP_PKEY_CTX_set_signature_md(ctx, _hashes[hash.lower()]())
+    r = _lib.EVP_PKEY_CTX_set_signature_md(ctx, _lib_hash(algorithm))
     assert r == 1
 
     typz = _lib.EVP_PKEY_id(pkey)
@@ -481,10 +476,10 @@ def engine_encrypt(pkey, plaintext, padding=None):
             assert r == 1
             if padding[0] == RSAPadding.RSA_PKCS1_OAEP_PADDING:
                 r = _lib.EVP_PKEY_CTX_set_rsa_mgf1_md(
-                    ctx, _hashes[padding[1].lower()]())
+                    ctx, _lib_hash(padding[1]))
                 assert r == 1
                 r = _lib.EVP_PKEY_CTX_set_rsa_oaep_md(
-                    ctx, _hashes[padding[2].lower()]())
+                    ctx, _lib_hash(padding[2]))
                 assert r == 1
         label = 'RSA'
     else:
@@ -550,10 +545,10 @@ def engine_decrypt(pkey, ciphertext, padding=None):
             assert r == 1
             if padding[0] == RSAPadding.RSA_PKCS1_OAEP_PADDING:
                 r = _lib.EVP_PKEY_CTX_set_rsa_mgf1_md(
-                    ctx, _hashes[padding[1].lower()]())
+                    ctx, _lib_hash(padding[1]))
                 assert r == 1
                 r = _lib.EVP_PKEY_CTX_set_rsa_oaep_md(
-                    ctx, _hashes[padding[2].lower()]())
+                    ctx, _lib_hash(padding[2]))
                 assert r == 1
         label = 'RSA'
     else:

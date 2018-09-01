@@ -139,15 +139,18 @@ These methods mimic the corresponding methods of cryptography key objects:
 
 ```python
 # RSA Signing/Verification
-signature = prvkey.sign(data, engine.engine_padding_pkcs1(), engine.engine_hashes('sha256'))
+padding = engine.engine_padding_pkcs1()
+algorithm = engine.engine_hashes('sha256')
+signature = prvkey.sign(data, padding, algorithm)
 
 # raise InvalidSignature exception if verification fails
-pubkey.verify(signature, data, engine.engine_padding_pkcs1(), engine.engine_hashes('sha256'))
+pubkey.verify(signature, data, padding, algorithm)
 
 # RSA_PSS
 padding = engine.engine_padding_pss('sha256', 32)
-signature = prvkey.sign(data, padding, engine.engine_hashes('sha256'))
-pubkey.verify(signature, data, padding, engine.engine_hashes('sha256'))
+algorithm = engine.engine_hashes('sha256')
+signature = prvkey.sign(data, padding, algorithm)
+pubkey.verify(signature, data, padding, algorithm)
 
 # EC Signing/Verification
 algorithm = engine.ecdsa_with_hash('sha256')
@@ -176,16 +179,16 @@ interfaces. They use raw `EVP_PKEY` objects.
 
 ```python
 import cryptography_engine.engine as engine
-signature = engine.engine_sign(prvkey._evp_pkey, data, hash_name, padding)
+signature = engine.engine_sign(prvkey._evp_pkey, data, algorithm, padding)
 
-assert engine.engine_verify(pubkey._evp_pkey, signature, data, hash_name, padding)
+assert engine.engine_verify(pubkey._evp_pkey, signature, data, algorithm, padding)
 
 # returns True/False if verification succeeds
 
 # data/signature: bytes
-# hash_name: str sha1|sha256|sha384|sha512
+# algorithm: str sha1|sha256|sha384|sha512
 #     hash used for digesting data
-#     prepend hash_name  with 'pre:' if data is already prehashed
+#     prepend algorithm  with 'pre:' if data is already prehashed
 #     i.e., pre:sha1|pre:sha256|pre:sha384|pre:sha512
 # padding: tuple
 #     RSASSA_PKCS1v15 (1,)  (1 == engine.RSAPadding.RSA_PKCS1_PADDING)

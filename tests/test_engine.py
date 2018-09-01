@@ -26,7 +26,7 @@ class TestEngine:
 
         pkey = engine.engine_load_private_key(e, alias)
         pubkey = engine.engine_load_public_key(e, alias)
-        
+
         engine.engine_finish(e)
 
     def test_rsa_sign(self, tmpdir):
@@ -148,7 +148,7 @@ class TestEngine:
         ciphered =  tmpdir.join("test_encrypt_ciphertext")
         ciphered.write_binary(out)
         plaintext =  tmpdir.join("test_encrypt_plaintext")
-        
+
         proc = subprocess.run(['openssl', 'pkeyutl', '-decrypt',
                                '-in', f'{ciphered}', '-out', f'{plaintext}',
                                '-engine', 'pkcs11',
@@ -164,7 +164,7 @@ class TestEngine:
         ciphered =  tmpdir.join("test_encrypt_cipheroaep")
         ciphered.write_binary(out)
         plaintext =  tmpdir.join("test_encrypt_plainoaep")
-        
+
         proc = subprocess.run(['openssl', 'pkeyutl', '-decrypt',
                                '-in', f'{ciphered}', '-out', f'{plaintext}',
                                '-engine', 'pkcs11',
@@ -175,7 +175,7 @@ class TestEngine:
                                '-inkey', RSA_PKCS11_URL])
 
         assert proc.returncode == 0
-        recover = pkey.decrypt(out, padding) 
+        recover = pkey.decrypt(out, padding)
         assert data == recover
 
         engine.engine_finish(e)
@@ -198,7 +198,7 @@ class TestEngine:
             sig = engine.engine_sign(
                 pkey._evp_pkey,
                 data,
-                hash=k,
+                algorithm=k,
                 padding=(engine.RSAPadding.RSA_PKCS1_PADDING, ))
             assert len(sig) in (128, 256, 384, 512)
 
@@ -220,7 +220,7 @@ class TestEngine:
                 pubkey._evp_pkey,
                 sig,
                 data,
-                hash=k,
+                algorithm=k,
                 padding=(engine.RSAPadding.RSA_PKCS1_PADDING, ))
 
         engine.engine_finish(e)
@@ -245,7 +245,7 @@ class TestEngine:
             sig = engine.engine_sign(
                 pkey._evp_pkey,
                 data,
-                hash=k,
+                algorithm=k,
                 padding=(engine.RSAPadding.RSA_PKCS1_PSS_PADDING, pss_saltlen))
             assert len(sig) in (128, 256, 384, 512)
 
@@ -268,7 +268,7 @@ class TestEngine:
                 pubkey._evp_pkey,
                 sig,
                 data,
-                hash=k,
+                algorithm=k,
                 padding=(engine.RSAPadding.RSA_PKCS1_PSS_PADDING, pss_saltlen))
 
         engine.engine_finish(e)
@@ -290,7 +290,7 @@ class TestEngine:
         ciphered =  tmpdir.join("test_encrypt_ciphertext")
         ciphered.write_binary(out)
         plaintext =  tmpdir.join("test_encrypt_plaintext")
-        
+
         proc = subprocess.run(['openssl', 'pkeyutl', '-decrypt',
                                '-in', f'{ciphered}', '-out', f'{plaintext}',
                                '-engine', 'pkcs11',
@@ -305,7 +305,7 @@ class TestEngine:
         ciphered =  tmpdir.join("test_encrypt_cipheroaep")
         ciphered.write_binary(out)
         plaintext =  tmpdir.join("test_encrypt_plainoaep")
-        
+
         proc = subprocess.run(['openssl', 'pkeyutl', '-decrypt',
                                '-in', f'{ciphered}', '-out', f'{plaintext}',
                                '-engine', 'pkcs11',
@@ -320,4 +320,3 @@ class TestEngine:
         assert data == recover
 
         engine.engine_finish(e)
-
