@@ -281,7 +281,18 @@ def engine_load_public_key(e, alias):
     else:
         raise ValueError(f"Unknown OpenSSL key type: {typz}")
 
+'''
+OpenSSL exemplars:
+openssl dgst -sha256 -engine pkcs11 -keyform engine
+    -sign 'pkcs11:token=MyToken1;object=RSA-0001' \
+    -out signature_file data_file
 
+openssl dgst -sha256 -engine pkcs11 -keyform engine
+    -sign 'pkcs11:token=MyToken1;object=RSA-0001' \
+    -sigopt rsa_padding_mode:pss \
+    -sigopt rsa_pss_saltlen:32 \
+    -out signature_file data_file
+'''
 def engine_sign(pkey, data, hash='sha256', padding=None):
     '''
     Low-level ENGINE signing function
@@ -346,6 +357,18 @@ def engine_sign(pkey, data, hash='sha256', padding=None):
     return _ffi.buffer(sig_buf)[:sig_len[0]]
 
 
+'''
+OpenSSL exemplars:
+openssl dgst -sha256 -engine pkcs11 -keyform engine
+    -verify 'pkcs11:token=MyToken1;object=RSA-0001' \
+    -signature signature_file data_file
+
+openssl dgst -sha256 -engine pkcs11 -keyform engine
+    -verify 'pkcs11:token=MyToken1;object=RSA-0001' \
+    -sigopt rsa_padding_mode:pss \
+    -sigopt rsa_pss_saltlen:32 \
+    -signature signature_file data_file
+'''
 def engine_verify(pkey, signature, data, hash='sha256', padding=None):
     '''
     Low-level ENGINE verification function
@@ -409,6 +432,19 @@ def engine_verify(pkey, signature, data, hash='sha256', padding=None):
     return r == 1
 
 
+'''
+OpenSSL exemplars:
+openssl pkeyutl -engine pkcs11 -keyform engine
+    -inkey 'pkcs11:token=MyToken1;object=RSA-0001' \
+    -encrypt -in plain_text -out cipher_text
+
+openssl pkeyutl -engine pkcs11 -keyform engine
+    -inkey 'pkcs11:token=MyToken1;object=RSA-0001' \
+    -pkeyopt rsa_padding_mode:oaep \
+    -pkeyopt rsa_mgf1_md:sha256 \
+    -pkeyopt rsa_oaep_md:sha256 \
+    -encrypt -in plain_text -out cipher_text
+'''
 def engine_encrypt(pkey, plaintext, padding=None):
     '''
     Low-level ENGINE encryption function
@@ -464,6 +500,19 @@ def engine_encrypt(pkey, plaintext, padding=None):
     return _ffi.buffer(out)[:outlen[0]]
 
 
+'''
+OpenSSL exemplars:
+openssl pkeyutl -engine pkcs11 -keyform engine
+    -inkey 'pkcs11:token=MyToken1;object=RSA-0001' \
+    -decrypt -in cipher_text -out recovered_text
+
+openssl pkeyutl -engine pkcs11 -keyform engine
+    -inkey 'pkcs11:token=MyToken1;object=RSA-0001' \
+    -pkeyopt rsa_padding_mode:oaep \
+    -pkeyopt rsa_mgf1_md:sha256 \
+    -pkeyopt rsa_oaep_md:sha256 \
+    -decrypt -in cipher_text -out recovered_text
+'''
 def engine_decrypt(pkey, ciphertext, padding=None):
     '''
     Low-level ENGINE decryption function
