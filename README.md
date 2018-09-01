@@ -95,16 +95,14 @@ e = engine.engine_init('pkcs11', [('PIN', my_token_pin)])
 
 ### Asymmetric Key Operations
 
-These keys are cryptography objects; to use them with the low-level functions
-(see [Low-level Functions](#low-level-functions))
-access the raw `EVP_PKEY` object via the attr `_evp_pkey`.
+These keys are cryptography key objects and can be used similarly.
+
 
 ```python
-# get a private key
-
 import cryptography_engine.engine as engine
 e = engine.engine_init('pkcs11', ('PIN', my_token_pin))
 
+# get a private key
 '''engine_load_private_key(engine, label_of_private_key)'''
 prvkey = engine.engine_load_private_key(e, alias)
 
@@ -118,7 +116,7 @@ pubkey = engine.engine_load_public_key(e, alias)
 #### Utility Functions
 
 cryptography methods need arguments of hashes and padding; these utility
-functions simplify calling cryptography methods.
+module-level functions simplify calling cryptography methods.
 
 ```python
 # AsymmetricPadding instances
@@ -135,12 +133,12 @@ ecdsa_with_hash(hash_name) # gets a ECDSA instance
 
 #### Object-Oriented Interfaces
 
-These methods mimic the corresponding methods of cryptography key objects:
+Use engine keys just like cryptography key objects:
 
 ```python
 # RSA Signing/Verification
-padding = engine.engine_padding_pkcs1()
-algorithm = engine.engine_hashes('sha256')
+padding = engine.engine_padding_pkcs1() #IS-A AsymmetricPadding
+algorithm = engine.engine_hashes('sha256') #IS-A HashAlgorithm
 signature = prvkey.sign(data, padding, algorithm)
 
 # raise InvalidSignature exception if verification fails
@@ -154,7 +152,7 @@ pubkey.verify(signature, data, padding, algorithm)
 
 # EC Signing/Verification
 algorithm = engine.ecdsa_with_hash('sha256')
-signature = prvkey.sign(data,  algorithm)
+signature = prvkey.sign(data, algorithm)
 pubkey.verify(signature, data, algorithm)
 
 # Encryption/Decryption
@@ -169,16 +167,16 @@ recoveredtext = prvkey.decrypt(ciphertext, padding)
 
 ### Low-level Functions
 
-These execute engine operations directly and don't use cryptography's object-oriented
-interfaces. They use raw `EVP_PKEY` objects.
-
-`cryptography` key objects have an attribute `_evp_pkey` that is a useable `EVP_PKEY`.
+These execute engine functions directly and don't use cryptography's object-oriented
+interfaces. They use raw cffi `EVP_PKEY` objects such as the internal `_evp_pkey` attr
+of `cryptography` OpenSSL-backed key objects.
 
 
 #### Sign/Verify Data
 
 ```python
 import cryptography_engine.engine as engine
+# we are using cffi EVP_PKEY* keys
 signature = engine.engine_sign(prvkey._evp_pkey, data, algorithm, padding)
 
 assert engine.engine_verify(pubkey._evp_pkey, signature, data, algorithm, padding)
@@ -212,7 +210,7 @@ assert recovered == plaintext
 # padding: tuple
 #     RSAES_PKCS1v15 (1,)  (1 == engine.RSAPadding.RSA_PKCS1_PADDING)
 #         E.g. (engine.RSAPadding.RSA_PKCS1_PADDING, )
-#     RSASS_OAEP (4, mgf1_hash_name, hash_name) (4 == engine.RSAPadding.RSA_PKCS1_OAEP_PADDING)
+#     RSAES_OAEP (4, mgf1_hash_name, hash_name) (4 == engine.RSAPadding.RSA_PKCS1_OAEP_PADDING)
 #         mgf1_hash_name: str; hash used for MGF1_MD sha1|sha256|sha384|sha512
 #         hash_name: str; hash used for OEAP_MD sha1|sha256|sha384|sha512
 #         usually mgf1_hash_name == hash_name
