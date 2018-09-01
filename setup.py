@@ -25,5 +25,4 @@ setup(
     author_email='shihping.chan@treeboxsolutions.com',
     packages=['cryptography_engine'],
     install_requires=['cryptography>=2.3.1',  ],
-    },
 )
