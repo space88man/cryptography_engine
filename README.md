@@ -171,6 +171,8 @@ These execute engine functions directly and don't use cryptography's object-orie
 interfaces. They use raw cffi `EVP_PKEY` objects such as the internal `_evp_pkey` attr
 of `cryptography` OpenSSL-backed key objects.
 
+For the low-level functions `algorithm` is the name of the hash("sha1", "sha256" etc), and `padding` is
+a tuple consisting of an int and padding-specific options.
 
 #### Sign/Verify Data
 
