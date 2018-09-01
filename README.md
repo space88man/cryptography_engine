@@ -17,6 +17,8 @@ copy from `tests/tokens` *OR* create a new one using the script `./test_tokens.s
 if your version of SoftHSMv2 is not binary compatible with v2.3.
 
 The tests call out to an external `openssl` binary using subprocess for verification.
+Note that there is a OpenSSL configuration file in `tests/fixtures/openssl.cnf` that
+provides the PIN (default value: userpin). 
 
 
 ```sh
