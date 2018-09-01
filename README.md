@@ -176,7 +176,10 @@ of `cryptography` OpenSSL-backed key objects.
 
 ```python
 import cryptography_engine.engine as engine
-# we are using cffi EVP_PKEY* keys
+
+# get a pubkey/prvkey from engine...
+# using cffi EVP_PKEY* keys, so access _evp_pkey attr
+
 signature = engine.engine_sign(prvkey._evp_pkey, data, algorithm, padding)
 
 assert engine.engine_verify(pubkey._evp_pkey, signature, data, algorithm, padding)
@@ -186,7 +189,7 @@ assert engine.engine_verify(pubkey._evp_pkey, signature, data, algorithm, paddin
 # data/signature: bytes
 # algorithm: str sha1|sha256|sha384|sha512
 #     hash used for digesting data
-#     prepend algorithm  with 'pre:' if data is already prehashed
+#     prepend algorithm  with 'pre:' if data is prehashed like cryptography's Prehashed class
 #     i.e., pre:sha1|pre:sha256|pre:sha384|pre:sha512
 # padding: tuple
 #     RSASSA_PKCS1v15 (1,)  (1 == engine.RSAPadding.RSA_PKCS1_PADDING)
@@ -202,14 +205,20 @@ assert engine.engine_verify(pubkey._evp_pkey, signature, data, algorithm, paddin
 
 ```python
 import cryptography_engine.engine as engine
+
+# get a pubkey/prvkey from engine...
+# using cffi EVP_PKEY* keys, so access _evp_pkey attr
+
 ciphertext = engine.engine_encrypt(pubkey._evp_pkey, plaintext, padding)
 recovered = engine.engine_decrypt(prvkey._evp_pkey, ciphertext, padding)
 assert recovered == plaintext
 
 # plaintext/ciphertext: bytes
+#
 # padding: tuple
 #     RSAES_PKCS1v15 (1,)  (1 == engine.RSAPadding.RSA_PKCS1_PADDING)
 #         E.g. (engine.RSAPadding.RSA_PKCS1_PADDING, )
+#
 #     RSAES_OAEP (4, mgf1_hash_name, hash_name) (4 == engine.RSAPadding.RSA_PKCS1_OAEP_PADDING)
 #         mgf1_hash_name: str; hash used for MGF1_MD sha1|sha256|sha384|sha512
 #         hash_name: str; hash used for OEAP_MD sha1|sha256|sha384|sha512
