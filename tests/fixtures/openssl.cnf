@@ -8,7 +8,7 @@ pkcs11 = pkcs11_section
 
 [ pkcs11_section ]
 PIN = userpin
-#PIN = Yq3X-bANJ-dxXJ-CsPx
+
 [ req ]
 distinguished_name = req_distinguished_name
 
