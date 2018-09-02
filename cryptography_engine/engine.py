@@ -31,8 +31,8 @@ class RSAPadding:
 # #define NID_rsaEncryption               6
 # #define NID_X9_62_id_ecPublicKey      408
 class _NID:
-    rsa_encryption = 6
-    ec_public_key = 408
+    RSA_ENCRYPTION = 6
+    EC_PUBLIC_KEY = 408
     
 LOG = logging.getLogger(__name__)
 
@@ -238,11 +238,11 @@ def engine_load_private_key(e, alias):
         raise ValueError(f"ENGINE failed to load private key {alias}")
     LOG.info('loaded _Engine private key %s', alias)
     typz = _lib.EVP_PKEY_id(key)
-    if typz == _NID.rsa_encryption:
+    if typz == _NID.RSA_ENCRYPTION:
         rsa_cdata = _lib.EVP_PKEY_get1_RSA(key)
         assert rsa_cdata != _ffi.NULL
         return _EngineRSAPrivateKey1(_backend, rsa_cdata, key)
-    elif typz == _NID.ec_public_key:
+    elif typz == _NID.EC_PUBLIC_KEY:
         ec_key_cdata = _lib.EVP_PKEY_get1_EC_KEY(key)
         assert ec_key_cdata != _ffi.NULL
         return _EngineECPrivateKey1(_backend, ec_key_cdata, key)
@@ -271,11 +271,11 @@ def engine_load_public_key(e, alias):
         raise ValueError(f"ENGINE failed to load public key {alias}")
     LOG.info('loaded _Engine public key %s', alias)
     typz = _lib.EVP_PKEY_id(key)
-    if typz == _NID.rsa_encryption:
+    if typz == _NID.RSA_ENCRYPTION:
         rsa_cdata = _lib.EVP_PKEY_get1_RSA(key)
         assert rsa_cdata != _ffi.NULL
         return _EngineRSAPublicKey1(_backend, rsa_cdata, key)
-    elif typz == _NID.ec_public_key:
+    elif typz == _NID.EC_PUBLIC_KEY:
         ec_key_cdata = _lib.EVP_PKEY_get1_EC_KEY(key)
         assert ec_key_cdata != _ffi.NULL
         return _EngineECPublicKey1(_backend, ec_key_cdata, key)
@@ -333,7 +333,7 @@ def engine_sign(pkey, data, algorithm='sha256', padding=None):
 
     label = 'ANON'
     typz = _lib.EVP_PKEY_id(pkey)
-    if typz == 6:  # RSA Key
+    if typz == _NID.RSA_ENCRYPTION:  # RSA Key
         if not padding:
             r = _lib.EVP_PKEY_CTX_set_rsa_padding(ctx, RSAPadding.RSA_PKCS1_PADDING)
             assert r == 1
@@ -344,7 +344,7 @@ def engine_sign(pkey, data, algorithm='sha256', padding=None):
                 r = _lib.EVP_PKEY_CTX_set_rsa_pss_saltlen(ctx, padding[1])
                 assert r == 1
         label = 'RSA'
-    elif typz == 408:
+    elif typz == _NID.EC_PUBLIC_KEY:
         label = 'EC'
     else:
         raise ValueError(f'Unknown key type {typz}')
@@ -412,7 +412,7 @@ def engine_verify(pkey, signature, data, algorithm='sha256', padding=None):
 
     typz = _lib.EVP_PKEY_id(pkey)
     label = 'ANON'
-    if typz == 6:  # RSA Key
+    if typz == _NID.RSA_ENCRYPTION:  # RSA Key
         if not padding:
             r = _lib.EVP_PKEY_CTX_set_rsa_padding(ctx, RSAPadding.RSA_PKCS1_PADDING)
             assert r == 1
@@ -423,7 +423,7 @@ def engine_verify(pkey, signature, data, algorithm='sha256', padding=None):
                 r = _lib.EVP_PKEY_CTX_set_rsa_pss_saltlen(ctx, padding[1])
                 assert r == 1
         label = 'RSA'
-    elif typz == 408:
+    elif typz == _NID.EC_PUBLIC_KEY:
         label = 'EC'
     else:
         raise ValueError(f'Unknown key type {typz}')
@@ -472,7 +472,7 @@ def engine_encrypt(pkey, plaintext, padding=None):
 
     typz = _lib.EVP_PKEY_id(pkey)
     label = 'ANON'
-    if typz == 6:  # RSA Key
+    if typz == _NID.RSA_ENCRYPTION:  # RSA Key
         if not padding:
             r = _lib.EVP_PKEY_CTX_set_rsa_padding(ctx,
                                                   RSAPadding.RSA_PKCS1_PADDING)
@@ -541,7 +541,7 @@ def engine_decrypt(pkey, ciphertext, padding=None):
 
     typz = _lib.EVP_PKEY_id(pkey)
     label = 'ANON'
-    if typz == 6:  # RSA Key
+    if typz == _NID.RSA_ENCRYPTION:  # RSA Key
         if not padding:
             r = _lib.EVP_PKEY_CTX_set_rsa_padding(ctx,
                                                   RSAPadding.RSA_PKCS1_PADDING)
