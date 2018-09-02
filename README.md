@@ -171,9 +171,16 @@ These execute engine functions directly and don't use cryptography's object-orie
 interfaces. They use raw cffi `EVP_PKEY` objects such as the internal `_evp_pkey` attr
 of `cryptography` OpenSSL-backed key objects.
 
-For the low-level functions `algorithm` is the name of the hash("sha1", "sha256" etc), and `padding` is
-a tuple consisting of an int and padding-specific options.
+For the low-level functions `algorithm` is the name of the hash("sha1", "sha256" etc)
+and `padding` is a tuple consisting of an int and padding-specific options.
 
+* `algorithm`: `hash_name: str #"sha1" "sha256" "sha384" "sha512"`
+    prepended with `"pre:"` for pre-hashed data
+* `padding`: tuple,:
+    * PKCS1v15: `(1,)`
+    * PSS: `(6, salt_length: int)`
+    * OAEP: `(4, mgf1_md_name: str, oaep_md_name: str)`
+    
 #### Sign/Verify Data
 
 ```python
@@ -182,25 +189,30 @@ import cryptography_engine.engine as engine
 # get a pubkey/prvkey from engine...
 # using cffi EVP_PKEY* keys, so access _evp_pkey attr
 
-signature = engine.engine_sign(prvkey._evp_pkey, data, algorithm, padding)
+signature = engine.engine_sign(prvkey._evp_pkey, data, "sha256", (1,))
+signature = engine.engine_sign(prvkey._evp_pkey, data, "pre:sha256", (6, -1))
+signature = engine.engine_sign(prvkey._evp_pkey, data, "sha384", (6, -2))
+# -1 - OpenSSL special value - use hash length
+# -2 - OpenSSL special value - maximal salt length
 
 assert engine.engine_verify(pubkey._evp_pkey, signature, data, algorithm, padding)
 
 # returns True/False if verification succeeds
 
 # data/signature: bytes
+#
 # algorithm: str sha1|sha256|sha384|sha512
 #     hash used for digesting data
 #     prepend algorithm  with 'pre:' if data is prehashed like cryptography's Prehashed class
 #     i.e., pre:sha1|pre:sha256|pre:sha384|pre:sha512
+#
 # padding: tuple
-#     RSASSA_PKCS1v15 (1,)  (1 == engine.RSAPadding.RSA_PKCS1_PADDING)
-#         E.g.: (1, )
-#     RSASS_PSS (6, salt_length) (6 == engine.RSAPadding.RSA_PKCS1_PSS_PADDING)
-#         OpenSSL accepts the unconventional salt lengths:
-#         * -1 (salt length = hash length)
-#         * -2 (maximum salt length)
-#         E.g. (6, 32)
+#     RSASSA_PKCS1v15: 1 == engine.RSAPadding.RSA_PKCS1_PADDING
+#         (1, )
+#     RSASS_PSS: 6 == engine.RSAPadding.RSA_PKCS1_PSS_PADDING
+#         (6, 32)
+#         (6, -1)
+#         (6, -2)
 ```
 
 #### Encryption/Decryption
@@ -211,6 +223,10 @@ import cryptography_engine.engine as engine
 # get a pubkey/prvkey from engine...
 # using cffi EVP_PKEY* keys, so access _evp_pkey attr
 
+# padding = (1, )
+# or
+# padding = (4, 'sha256', 'sha256')
+
 ciphertext = engine.engine_encrypt(pubkey._evp_pkey, plaintext, padding)
 recovered = engine.engine_decrypt(prvkey._evp_pkey, ciphertext, padding)
 assert recovered == plaintext
@@ -218,12 +234,9 @@ assert recovered == plaintext
 # plaintext/ciphertext: bytes
 #
 # padding: tuple
-#     RSAES_PKCS1v15 (1,)  (1 == engine.RSAPadding.RSA_PKCS1_PADDING)
-#         E.g. (engine.RSAPadding.RSA_PKCS1_PADDING, )
+#     RSAES_PKCS1v15: 1 == engine.RSAPadding.RSA_PKCS1_PADDING
+#         (1, )
 #
-#     RSAES_OAEP (4, mgf1_hash_name, hash_name) (4 == engine.RSAPadding.RSA_PKCS1_OAEP_PADDING)
-#         mgf1_hash_name: str; hash used for MGF1_MD sha1|sha256|sha384|sha512
-#         hash_name: str; hash used for OEAP_MD sha1|sha256|sha384|sha512
-#         usually mgf1_hash_name == hash_name
-#         E.g. (engine.RSAPadding.RSA_PKCS1_OAEP_PADDING, 'sha256', 'sha256')
+#     RSAES_OAEP: 4 == engine.RSAPadding.RSA_PKCS1_OAEP_PADDING
+#         (4, 'sha256', 'sha256')
 ```
