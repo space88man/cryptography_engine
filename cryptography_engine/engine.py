@@ -1,22 +1,30 @@
-'''
+"""
 Thin wrappers over OpenSSL ENGINE operations based on pyca/cryptography.
 We try to make key objects behave like cryptography keys.
 Provide low-level ENGINE functions that use the cffi directly.
-'''
-
+"""
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric.ec import (
-    ECDSA, )
+    ECDSA,
+)
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric.padding import (PKCS1v15, PSS,
-                                                               MGF1, OAEP)
+from cryptography.hazmat.primitives.asymmetric.padding import PKCS1v15, PSS, MGF1, OAEP
 
-from cryptography.hazmat.backends.openssl.rsa import (_RSAPublicKey,
-                                                      _RSAPrivateKey)
-from cryptography.hazmat.backends.openssl.ec import (_EllipticCurvePublicKey,
-                                                     _EllipticCurvePrivateKey)
+from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey, _RSAPrivateKey
+from cryptography.hazmat.backends.openssl.ec import (
+    _EllipticCurvePublicKey,
+    _EllipticCurvePrivateKey,
+)
 
 import logging
+from typing import TypeVar, Union
+from collections.abc import Sequence
+
+
+ENGINE = TypeVar("ENGINE")
+EVP_MD = TypeVar("EVP_MD")
+EVP_PKEY = TypeVar("EVP_PKEY")
+EVP_PKEY_CTX = TypeVar("EVP_PKEY_CTX")
 
 
 class RSAPadding:
@@ -27,21 +35,26 @@ class RSAPadding:
     RSA_X931_PADDING = 5
     RSA_PKCS1_PSS_PADDING = 6
 
+
 # OpenSSL NIDs to identify key type from  EVP_PKEY*
 # #define NID_rsaEncryption               6
 # #define NID_X9_62_id_ecPublicKey      408
 class _NID:
     RSA_ENCRYPTION = 6
     EC_PUBLIC_KEY = 408
-    
+
+
 LOG = logging.getLogger(__name__)
 
 _backend = default_backend()
 
 _lib, _ffi = _backend._lib, _backend._ffi
 
-def _lib_hash(hsh):
-    return getattr(_lib, 'EVP_' + hsh.lower())()
+
+def _lib_hash(hsh: str) -> EVP_MD:
+    # return getattr(_lib, 'EVP_' + hsh.lower())()
+    return _lib.EVP_get_digestbyname(hsh.lower().encode("ascii"))
+
 
 def _get_ctx(pkey):
     pkey_ctx = _lib.EVP_PKEY_CTX_new(pkey, _ffi.NULL)
@@ -50,45 +63,73 @@ def _get_ctx(pkey):
     return pkey_ctx
 
 
-def _hash_data(hsh, data):
+def _hash_data(hsh: str, data: bytes) -> bytes:
     digest = hashes.Hash(engine_hashes(hsh), _backend)
     digest.update(data)
     return digest.finalize()
 
 
 class _EngineRSAPublicKey1(_RSAPublicKey):
-    '''wrapper for cryptography _RSAPublicKey class'''
+    """wrapper for cryptography _RSAPublicKey class"""
+
     pass
 
 
 class _EngineRSAPrivateKey1(_RSAPrivateKey):
-    '''wrapper for cryptography _RSAPrivateKey class
-    we don't support serialization, unlike "soft" keys
-    '''
+    """wrapper for cryptography _RSAPrivateKey class
+    We don't support serialization, unlike "soft" keys
+
+    _RSAPrivateKey has changed its constructor to inspect the bytes
+    of the "soft" key (RSA_check_key), so we copy-pasta here sans the
+    check
+    """
+
+    def __init__(self, backend, rsa_cdata, evp_pkey):
+
+        self._backend = backend
+        self._rsa_cdata = rsa_cdata
+        self._evp_pkey = evp_pkey
+
+        n = self._backend._ffi.new("BIGNUM **")
+        self._backend._lib.RSA_get0_key(
+            self._rsa_cdata,
+            n,
+            self._backend._ffi.NULL,
+            self._backend._ffi.NULL,
+        )
+        self._backend.openssl_assert(n[0] != self._backend._ffi.NULL)
+        self._key_size = self._backend._lib.BN_num_bits(n[0])
+
     def private_numbers(self):
-        raise ValueError('Not implemented for engine private keys')
+        raise ValueError("Not implemented for engine private keys")
 
     def private_bytes(self, encoding, format, encryption_algorithm):
-        raise ValueError('Not implemented for engine private keys')
+        raise ValueError("Not implemented for engine private keys")
 
 
 class _EngineECPublicKey1(_EllipticCurvePublicKey):
-    '''wrapper for cryptography _EllipticCurvePublicKey class'''
+    """wrapper for cryptography _EllipticCurvePublicKey class"""
+
     pass
 
 
 class _EngineECPrivateKey1(_EllipticCurvePrivateKey):
-    '''wrapper for cryptography _EllipticCurvePrivateKey class
-    we don't support serialization, unlike "soft" keys
-    '''
+    """wrapper for cryptography _EllipticCurvePrivateKey class
+    We don't support serialization, unlike "soft" keys
+    """
+
     def private_numbers(self):
-        raise ValueError('Not implemented for engine private keys')
+        raise ValueError("Not implemented for engine private keys")
 
     def private_bytes(self, encoding, format, encryption_algorithm):
-        raise ValueError('Not implemented for engine private keys')
+        raise ValueError("Not implemented for engine private keys")
 
 
-def engine_init(engine, commands):
+PrivateKey = Union[_EngineRSAPrivateKey1, _EngineECPrivateKey1]
+PublicKey = Union[_EngineRSAPublicKey1, _EngineECPublicKey1]
+
+
+def engine_init(engine: str, commands: Sequence[Sequence[str]]) -> ENGINE:
     """
     Create an engine object
 
@@ -106,13 +147,14 @@ def engine_init(engine, commands):
 
     _lib.ENGINE_load_builtin_engines()
 
-    e = _lib.ENGINE_by_id(engine.encode('ascii'))
+    e = _lib.ENGINE_by_id(engine.encode("ascii"))
     if e == _ffi.NULL:
-        raise ValueError(f'Could not load engine {engine}')
+        raise ValueError(f"Could not load engine {engine}")
 
     for k in commands:
-        r = _lib.ENGINE_ctrl_cmd_string(e, k[0].encode('ascii'),
-                                        k[1].encode('ascii'), 0)
+        r = _lib.ENGINE_ctrl_cmd_string(
+            e, k[0].encode("ascii"), k[1].encode("ascii"), 0
+        )
         if r != 1:
             raise ValueError(f"ENGINE failed at command {k}")
 
@@ -124,18 +166,18 @@ def engine_init(engine, commands):
     return e
 
 
-def engine_padding_pkcs1():
-    '''
+def engine_padding_pkcs1() -> PKCS1v15:
+    """
     Utility function for cryptography padding instance
 
     :return:
-        PKCS1v15() instance
-    '''
+        PKCS1v15 instance
+    """
     return PKCS1v15()
 
 
-def engine_padding_oaep(hsh1, hsh2, label=None):
-    '''
+def engine_padding_oaep(hsh1: str, hsh2: str, label=None) -> OAEP:
+    """
     Utility function for cryptography padding instance
 
     :param hsh1:
@@ -150,12 +192,12 @@ def engine_padding_oaep(hsh1, hsh2, label=None):
 
     :return:
         OAEP instance
-    '''
+    """
     return OAEP(MGF1(engine_hashes(hsh1)), engine_hashes(hsh2), label)
 
 
-def engine_padding_pss(hsh, saltlen):
-    '''
+def engine_padding_pss(hsh: str, saltlen: int) -> PSS:
+    """
     Utility function for cryptography padding instance
 
     :param hsh:
@@ -171,12 +213,12 @@ def engine_padding_pss(hsh, saltlen):
 
     :return:
         PSS instance
-    '''
+    """
     return PSS(MGF1(engine_hashes(hsh)), saltlen)
 
 
-def engine_hashes(hsh):
-    '''
+def engine_hashes(hsh: str) -> hashes.HashAlgorithm:
+    """
     Utility function for cryptography HashAlgorithm
 
     :param hsh:
@@ -185,12 +227,12 @@ def engine_hashes(hsh):
 
     :return:
         HashAlgorithm instance
-    '''
+    """
     return getattr(hashes, hsh.upper())()
 
 
-def ecdsa_with_hash(hsh):
-    '''
+def ecdsa_with_hash(hsh: str) -> ECDSA:
+    """
     Utility function for cryptography EllipticCurveSignatureAlgorithm instance
 
     :param k:
@@ -198,26 +240,26 @@ def ecdsa_with_hash(hsh):
 
     :return:
         ECDSA instance
-    '''
+    """
     return ECDSA(engine_hashes(hsh))
 
 
-def engine_finish(engine):
-    '''
+def engine_finish(engine: ENGINE):
+    """
     Clean up OpenSSL ENGINE
 
     :param engine:
         ENGINE reference
 
-    '''
+    """
     r = _lib.ENGINE_finish(engine)
     assert r == 1
     # r = _lib.ENGINE_free(engine)
     # assert r == 1
 
 
-def engine_load_private_key(e, alias):
-    '''
+def engine_load_private_key(e: ENGINE, alias: str) -> PrivateKey:
+    """
     Load a private key from an  OpenSSL ENGINE.
 
     :param e:
@@ -230,13 +272,12 @@ def engine_load_private_key(e, alias):
         a cryptography *PrivateKey-like instance
         it should implement RSAPrivateKey/EllipticCurvePrivateKey
         this object does not support serialization
-    '''
+    """
 
-    key = _lib.ENGINE_load_private_key(e, alias.encode('ascii'),
-                                               _ffi.NULL, _ffi.NULL)
+    key = _lib.ENGINE_load_private_key(e, alias.encode("ascii"), _ffi.NULL, _ffi.NULL)
     if key == _ffi.NULL:
         raise ValueError(f"ENGINE failed to load private key {alias}")
-    LOG.info('loaded _Engine private key %s', alias)
+    LOG.info("loaded _Engine private key %s", alias)
     typz = _lib.EVP_PKEY_id(key)
     if typz == _NID.RSA_ENCRYPTION:
         rsa_cdata = _lib.EVP_PKEY_get1_RSA(key)
@@ -250,8 +291,8 @@ def engine_load_private_key(e, alias):
         raise ValueError(f"Unknown OpenSSL key type: {typz}")
 
 
-def engine_load_public_key(e, alias):
-    '''
+def engine_load_public_key(e: ENGINE, alias: str) -> PublicKey:
+    """
     Load a public key from an  OpenSSL ENGINE.
 
     :param e:
@@ -263,13 +304,12 @@ def engine_load_public_key(e, alias):
     :return:
         a cryptography *PublicKey-like instance
         it should implement RSAPublicKey/EllipticCurvePublicKey
-    '''
+    """
 
-    key = _lib.ENGINE_load_public_key(e, alias.encode('ascii'),
-                                             _ffi.NULL, _ffi.NULL)
+    key = _lib.ENGINE_load_public_key(e, alias.encode("ascii"), _ffi.NULL, _ffi.NULL)
     if key == _ffi.NULL:
         raise ValueError(f"ENGINE failed to load public key {alias}")
-    LOG.info('loaded _Engine public key %s', alias)
+    LOG.info("loaded _Engine public key %s", alias)
     typz = _lib.EVP_PKEY_id(key)
     if typz == _NID.RSA_ENCRYPTION:
         rsa_cdata = _lib.EVP_PKEY_get1_RSA(key)
@@ -282,7 +322,8 @@ def engine_load_public_key(e, alias):
     else:
         raise ValueError(f"Unknown OpenSSL key type: {typz}")
 
-'''
+
+"""
 OpenSSL exemplars:
 openssl dgst -sha256 -engine pkcs11 -keyform engine
     -sign 'pkcs11:token=MyToken1;object=RSA-0001' \
@@ -293,9 +334,13 @@ openssl dgst -sha256 -engine pkcs11 -keyform engine
     -sigopt rsa_padding_mode:pss \
     -sigopt rsa_pss_saltlen:32 \
     -out signature_file data_file
-'''
-def engine_sign(pkey, data, algorithm='sha256', padding=None):
-    '''
+"""
+
+
+def engine_sign(
+    pkey: PrivateKey, data: bytes, algorithm: str = "sha256", padding: tuple = None
+) -> bytes:
+    """
     Low-level ENGINE signing function
 
     :param pkey:
@@ -316,9 +361,9 @@ def engine_sign(pkey, data, algorithm='sha256', padding=None):
 
     :return:
         bytes the signature value
-    '''
+    """
 
-    if algorithm.startswith('pre:'):
+    if algorithm.startswith("pre:"):
         algorithm = algorithm[4:]
     else:
         data = _hash_data(algorithm, data)
@@ -331,7 +376,7 @@ def engine_sign(pkey, data, algorithm='sha256', padding=None):
     r = _lib.EVP_PKEY_CTX_set_signature_md(ctx, _lib_hash(algorithm))
     assert r == 1
 
-    label = 'ANON'
+    label = "ANON"
     typz = _lib.EVP_PKEY_id(pkey)
     if typz == _NID.RSA_ENCRYPTION:  # RSA Key
         if not padding:
@@ -343,22 +388,22 @@ def engine_sign(pkey, data, algorithm='sha256', padding=None):
             if padding[0] == RSAPadding.RSA_PKCS1_PSS_PADDING:
                 r = _lib.EVP_PKEY_CTX_set_rsa_pss_saltlen(ctx, padding[1])
                 assert r == 1
-        label = 'RSA'
+        label = "RSA"
     elif typz == _NID.EC_PUBLIC_KEY:
-        label = 'EC'
+        label = "EC"
     else:
-        raise ValueError(f'Unknown key type {typz}')
+        raise ValueError(f"Unknown key type {typz}")
 
-    sig_len = _ffi.new('size_t *')
+    sig_len = _ffi.new("size_t *")
     sig_len[0] = 512
-    sig_buf = _ffi.new('unsigned char[512]')
+    sig_buf = _ffi.new("unsigned char[512]")
     _lib.EVP_PKEY_sign(ctx, sig_buf, sig_len, data, len(data))
-    LOG.debug('%s signature size: %d', label, sig_len[0])
+    LOG.debug("%s signature size: %d", label, sig_len[0])
 
-    return _ffi.buffer(sig_buf)[:sig_len[0]]
+    return _ffi.buffer(sig_buf)[: sig_len[0]]
 
 
-'''
+"""
 OpenSSL exemplars:
 openssl dgst -sha256 -engine pkcs11 -keyform engine
     -verify 'pkcs11:token=MyToken1;object=RSA-0001' \
@@ -369,9 +414,17 @@ openssl dgst -sha256 -engine pkcs11 -keyform engine
     -sigopt rsa_padding_mode:pss \
     -sigopt rsa_pss_saltlen:32 \
     -signature signature_file data_file
-'''
-def engine_verify(pkey, signature, data, algorithm='sha256', padding=None):
-    '''
+"""
+
+
+def engine_verify(
+    pkey: PublicKey,
+    signature: bytes,
+    data: bytes,
+    algorithm: str = "sha256",
+    padding: tuple = None,
+) -> bool:
+    """
     Low-level ENGINE verification function
 
     :param pkey:
@@ -395,9 +448,9 @@ def engine_verify(pkey, signature, data, algorithm='sha256', padding=None):
 
     :return:
         True if verification is successful
-    '''
+    """
 
-    if algorithm.startswith('pre:'):
+    if algorithm.startswith("pre:"):
         algorithm = algorithm[4:]
     else:
         data = _hash_data(algorithm, data)
@@ -411,7 +464,7 @@ def engine_verify(pkey, signature, data, algorithm='sha256', padding=None):
     assert r == 1
 
     typz = _lib.EVP_PKEY_id(pkey)
-    label = 'ANON'
+    label = "ANON"
     if typz == _NID.RSA_ENCRYPTION:  # RSA Key
         if not padding:
             r = _lib.EVP_PKEY_CTX_set_rsa_padding(ctx, RSAPadding.RSA_PKCS1_PADDING)
@@ -422,18 +475,18 @@ def engine_verify(pkey, signature, data, algorithm='sha256', padding=None):
             if padding[0] == RSAPadding.RSA_PKCS1_PSS_PADDING:
                 r = _lib.EVP_PKEY_CTX_set_rsa_pss_saltlen(ctx, padding[1])
                 assert r == 1
-        label = 'RSA'
+        label = "RSA"
     elif typz == _NID.EC_PUBLIC_KEY:
-        label = 'EC'
+        label = "EC"
     else:
-        raise ValueError(f'Unknown key type {typz}')
+        raise ValueError(f"Unknown key type {typz}")
 
     r = _lib.EVP_PKEY_verify(ctx, signature, len(signature), data, len(data))
 
     return r == 1
 
 
-'''
+"""
 OpenSSL exemplars:
 openssl pkeyutl -engine pkcs11 -keyform engine
     -inkey 'pkcs11:token=MyToken1;object=RSA-0001' \
@@ -445,9 +498,11 @@ openssl pkeyutl -engine pkcs11 -keyform engine
     -pkeyopt rsa_mgf1_md:sha256 \
     -pkeyopt rsa_oaep_md:sha256 \
     -encrypt -in plain_text -out cipher_text
-'''
-def engine_encrypt(pkey, plaintext, padding=None):
-    '''
+"""
+
+
+def engine_encrypt(pkey: PrivateKey, plaintext: bytes, padding: tuple = None) -> bytes:
+    """
     Low-level ENGINE encryption function
 
     :param pkey:
@@ -464,44 +519,41 @@ def engine_encrypt(pkey, plaintext, padding=None):
 
     :return:
         bytes ciphertext
-    '''
+    """
     ctx = _get_ctx(pkey)
 
     r = _lib.EVP_PKEY_encrypt_init(ctx)
     assert r == 1
 
     typz = _lib.EVP_PKEY_id(pkey)
-    label = 'ANON'
+    label = "ANON"
     if typz == _NID.RSA_ENCRYPTION:  # RSA Key
         if not padding:
-            r = _lib.EVP_PKEY_CTX_set_rsa_padding(ctx,
-                                                  RSAPadding.RSA_PKCS1_PADDING)
+            r = _lib.EVP_PKEY_CTX_set_rsa_padding(ctx, RSAPadding.RSA_PKCS1_PADDING)
             assert r == 1
         else:
             r = _lib.EVP_PKEY_CTX_set_rsa_padding(ctx, padding[0])
             assert r == 1
             if padding[0] == RSAPadding.RSA_PKCS1_OAEP_PADDING:
-                r = _lib.EVP_PKEY_CTX_set_rsa_mgf1_md(
-                    ctx, _lib_hash(padding[1]))
+                r = _lib.EVP_PKEY_CTX_set_rsa_mgf1_md(ctx, _lib_hash(padding[1]))
                 assert r == 1
-                r = _lib.EVP_PKEY_CTX_set_rsa_oaep_md(
-                    ctx, _lib_hash(padding[2]))
+                r = _lib.EVP_PKEY_CTX_set_rsa_oaep_md(ctx, _lib_hash(padding[2]))
                 assert r == 1
-        label = 'RSA'
+        label = "RSA"
     else:
-        raise ValueError(f'Unknown key type for encryption: {typz}')
+        raise ValueError(f"Unknown key type for encryption: {typz}")
 
-    outlen = _ffi.new('size_t *')
+    outlen = _ffi.new("size_t *")
     outlen[0] = 512
-    out = _ffi.new('unsigned char[512]')
+    out = _ffi.new("unsigned char[512]")
 
     r = _lib.EVP_PKEY_encrypt(ctx, out, outlen, plaintext, len(plaintext))
     assert r == 1
 
-    return _ffi.buffer(out)[:outlen[0]]
+    return _ffi.buffer(out)[: outlen[0]]
 
 
-'''
+"""
 OpenSSL exemplars:
 openssl pkeyutl -engine pkcs11 -keyform engine
     -inkey 'pkcs11:token=MyToken1;object=RSA-0001' \
@@ -513,9 +565,11 @@ openssl pkeyutl -engine pkcs11 -keyform engine
     -pkeyopt rsa_mgf1_md:sha256 \
     -pkeyopt rsa_oaep_md:sha256 \
     -decrypt -in cipher_text -out recovered_text
-'''
-def engine_decrypt(pkey, ciphertext, padding=None):
-    '''
+"""
+
+
+def engine_decrypt(pkey: PrivateKey, ciphertext: bytes, padding: tuple = None) -> bytes:
+    """
     Low-level ENGINE decryption function
 
     :param pkey:
@@ -533,38 +587,35 @@ def engine_decrypt(pkey, ciphertext, padding=None):
 
     :return:
         bytes plaintext
-    '''
+    """
     ctx = _get_ctx(pkey)
 
     r = _lib.EVP_PKEY_decrypt_init(ctx)
     assert r == 1
 
     typz = _lib.EVP_PKEY_id(pkey)
-    label = 'ANON'
+    label = "ANON"
     if typz == _NID.RSA_ENCRYPTION:  # RSA Key
         if not padding:
-            r = _lib.EVP_PKEY_CTX_set_rsa_padding(ctx,
-                                                  RSAPadding.RSA_PKCS1_PADDING)
+            r = _lib.EVP_PKEY_CTX_set_rsa_padding(ctx, RSAPadding.RSA_PKCS1_PADDING)
             assert r == 1
         else:
             r = _lib.EVP_PKEY_CTX_set_rsa_padding(ctx, padding[0])
             assert r == 1
             if padding[0] == RSAPadding.RSA_PKCS1_OAEP_PADDING:
-                r = _lib.EVP_PKEY_CTX_set_rsa_mgf1_md(
-                    ctx, _lib_hash(padding[1]))
+                r = _lib.EVP_PKEY_CTX_set_rsa_mgf1_md(ctx, _lib_hash(padding[1]))
                 assert r == 1
-                r = _lib.EVP_PKEY_CTX_set_rsa_oaep_md(
-                    ctx, _lib_hash(padding[2]))
+                r = _lib.EVP_PKEY_CTX_set_rsa_oaep_md(ctx, _lib_hash(padding[2]))
                 assert r == 1
-        label = 'RSA'
+        label = "RSA"
     else:
-        raise ValueError(f'Unknown key type for encryption: {typz}')
+        raise ValueError(f"Unknown key type for encryption: {typz}")
 
-    outlen = _ffi.new('size_t *')
+    outlen = _ffi.new("size_t *")
     outlen[0] = 512
-    out = _ffi.new('unsigned char[512]')
+    out = _ffi.new("unsigned char[512]")
 
     r = _lib.EVP_PKEY_decrypt(ctx, out, outlen, ciphertext, len(ciphertext))
     assert r == 1
 
-    return _ffi.buffer(out)[:outlen[0]]
+    return _ffi.buffer(out)[: outlen[0]]

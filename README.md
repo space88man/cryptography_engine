@@ -4,7 +4,11 @@ A thin set of wrappers over OpenSSL Engine key operations based on
 [pyca/cryptography](https://github.com/pyca/cryptography)
 
 ## Read Me First!
-
+*Update 2021-04-19*: pyca/cryptography removed bindings to `ENGINE_xxx` functions for
+a while, and these were reinstated in [PR#5449](https://github.com/pyca/cryptography/pull/5449).
+There are now a few tweaks to work with new bindings. The old code can be found in the
+`for-2.5` branch.
+***
 This package uses pyca/cryptography internal and hazmat objects so it
 is dependent on the version of pyca/cryptography and will break if various
 internal symbols disappear.
@@ -18,10 +22,15 @@ if your version of SoftHSMv2 is not binary compatible with v2.3.
 
 The tests call out to an external `openssl` binary using subprocess for verification.
 Note that there is a OpenSSL configuration file in `tests/fixtures/openssl.cnf` that
-provides the PIN (default value: userpin). 
+provides the PIN (default value: userpin).
+
 
 
 ```sh
+## set OPENSSL_ENGINES var to find libpkcs11.so/pkcs11.so if you are not using
+## a locally compiled wheel. The PyPI wheel expects to find engines in
+## /opt/pyca/cryptography/openssl/lib/engines-1.1
+
 ## EITHER
 $ cp -r tests/tokens tmp/
 
@@ -68,7 +77,7 @@ Public Key Object; EC  EC_POINT 384 bits
 $ pip install -e .
 $ pytest tests
 ======================== test session starts ========================
-platform linux -- Python 3.6.6, pytest-3.6.3, py-1.5.4, pluggy-0.6.0
+platform linux -- Python 3.9.2, pytest-6.2.3, py-1.10.0, pluggy-0.13.1
 rootdir: /cryptography_engine, inifile:
 collected 8 items
 
@@ -82,6 +91,10 @@ tests/test_engine.py ........                                 [100%]
 ### Get OpenSSL ENGINE reference
 
 ```python
+# you may need to set OPENSSL_ENGINES environment var if using
+# 3rd party wheels, e.g., from PyPI.
+# export OPENSSL_ENGINES=/usr/lib64/engines-1.1
+
 import cryptography_engine.engine as engine
 
 # get an engine object
@@ -180,7 +193,7 @@ and `padding` is a tuple consisting of an int and padding-specific options.
     * PKCS1v15: `(1,)`
     * PSS: `(6, salt_length: int)`
     * OAEP: `(4, mgf1_md_name: str, oaep_md_name: str)`
-    
+
 #### Sign/Verify Data
 
 ```python

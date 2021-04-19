@@ -18,11 +18,11 @@ long_description = '''pyca/cryptography-based wrappers for OpenSSL engine operat
 
 setup(
     name='cryptography_engine',
-    version='0.4.6',
+    version='0.5.1',
     description='Wrappers for OpenSSL engine operations based on pyca/cryptography',
     long_description=long_description,
     author='SPChan',
     author_email='shihping.chan@gmail.com',
     packages=['cryptography_engine'],
-    install_requires=['cryptography>=2.3.1',  ],
+    install_requires=['cryptography>=3.4.7',  ],
 )
