@@ -22,9 +22,6 @@ from collections.abc import Sequence
 
 
 ENGINE = TypeVar("ENGINE")
-EVP_MD = TypeVar("EVP_MD")
-EVP_PKEY = TypeVar("EVP_PKEY")
-EVP_PKEY_CTX = TypeVar("EVP_PKEY_CTX")
 
 
 class RSAPadding:
@@ -51,7 +48,7 @@ _backend = default_backend()
 _lib, _ffi = _backend._lib, _backend._ffi
 
 
-def _lib_hash(hsh: str) -> EVP_MD:
+def _lib_hash(hsh: str):
     # return getattr(_lib, 'EVP_' + hsh.lower())()
     return _lib.EVP_get_digestbyname(hsh.lower().encode("ascii"))
 
