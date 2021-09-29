@@ -39,7 +39,7 @@ provides the PIN (default value: userpin).
 ## /opt/pyca/cryptography/openssl/lib/engines-1.1
 
 ## EITHER
-$ cp -r tests/tokens tmp/
+$ mkdir tmp; cp -r tests/tokens tmp/
 
 ## OR
 
