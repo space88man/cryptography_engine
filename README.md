@@ -4,6 +4,12 @@ A thin set of wrappers over OpenSSL Engine key operations based on
 [pyca/cryptography](https://github.com/pyca/cryptography)
 
 ## Read Me First!
+*Update 2021-09-29*: Test matrix updated to Python 3.10rc2 (Fedora 35 beta).
+* platform linux — `Python 3.10.0rc2, pytest-6.2.5, py-1.10.0, pluggy-1.0.0`
+* cryptography — 3.4.8
+* softhsm — 2.6.1
+* (engine) openssl-pkcs11 — 0.4.11
+
 *Update 2021-04-19*: pyca/cryptography removed bindings to `ENGINE_xxx` functions for
 a while, and these were reinstated in [PR#5449](https://github.com/pyca/cryptography/pull/5449).
 There are now a few tweaks to work with new bindings. The old code can be found in the
@@ -18,7 +24,8 @@ The tests use the [pkcs11](https://github.com/OpenSC/libp11) engine with
 
 The tests assume that there is a SoftHSMv2 token in `tmp/tokens`. You can either
 copy from `tests/tokens` *OR* create a new one using the script `./test_tokens.sh`
-if your version of SoftHSMv2 is not binary compatible with v2.3.
+if your version of SoftHSMv2 is not binary compatible with v2.3. You will need `pkcs11-tool`
+from `opensc` to create a token.
 
 The tests call out to an external `openssl` binary using subprocess for verification.
 Note that there is a OpenSSL configuration file in `tests/fixtures/openssl.cnf` that
